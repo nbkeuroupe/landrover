@@ -1,0 +1,268 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=3.0">
+    <title>Transaction Receipt - BlackRock Terminal</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+            line-height: 1.5;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        .container { 
+            max-width: 100%;
+            width: 100%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .receipt { 
+            border: 2px dashed #666;
+            padding: 20px;
+            margin: 0;
+            background: white;
+        }
+        
+        .receipt-header { 
+            text-align: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .receipt-title { 
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        
+        .receipt-row { 
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            padding: 8px 0;
+            min-height: 44px;
+            word-wrap: break-word;
+        }
+        
+        .receipt-row span:first-child {
+            font-weight: 600;
+            color: #555;
+            flex: 0 0 40%;
+            margin-right: 10px;
+        }
+        
+        .receipt-row span:last-child {
+            flex: 1;
+            text-align: right;
+            word-break: break-all;
+            font-size: 14px;
+        }
+        
+        .receipt-row.total { 
+            border-top: 2px solid #333;
+            font-weight: bold;
+            margin-top: 20px;
+            padding-top: 15px;
+            font-size: 16px;
+        }
+        
+        .actions { 
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+        }
+        
+        .actions button, .actions a.button { 
+            background-color: #007bff;
+            color: white;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            margin: 8px 4px;
+            font-size: 16px;
+            min-width: 120px;
+            min-height: 48px;
+            display: inline-block;
+            text-align: center;
+            line-height: 1.2;
+            -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+        
+        .actions button:active, .actions a.button:active {
+            transform: scale(0.98);
+        }
+        
+        .actions button.secondary { 
+            background-color: #6c757d;
+        }
+        
+        .actions .print-btn { 
+            background-color: #28a745;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            body {
+                padding: 5px;
+            }
+            
+            .container {
+                border-radius: 8px;
+            }
+            
+            .receipt {
+                padding: 15px;
+            }
+            
+            .receipt-title {
+                font-size: 20px;
+            }
+            
+            .receipt-row {
+                flex-direction: column;
+                align-items: stretch;
+                margin-bottom: 15px;
+            }
+            
+            .receipt-row span:first-child {
+                flex: none;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            
+            .receipt-row span:last-child {
+                text-align: left;
+                font-size: 16px;
+                font-weight: 500;
+            }
+            
+            .actions {
+                padding: 15px 10px;
+            }
+            
+            .actions button, .actions a.button {
+                width: calc(50% - 8px);
+                margin: 6px 4px;
+                padding: 16px 12px;
+                font-size: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .actions button, .actions a.button {
+                width: 100%;
+                margin: 6px 0;
+            }
+        }
+
+        /* Print styles */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            
+            .container {
+                box-shadow: none;
+                border-radius: 0;
+            }
+            
+            .actions {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="receipt" id="receipt">
+            <div class="receipt-header">
+                <div class="receipt-title">BLACKROCK TERMINAL</div>
+                <div>Transaction Receipt</div>
+            </div>
+            
+            <div class="receipt-row">
+                <span>Transaction ID:</span>
+                <span>{{ transaction.txn_id }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Date/Time:</span>
+                <span>{{ transaction.timestamp }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Card Number:</span>
+                <span>****{{ transaction.pan }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Protocol:</span>
+                <span>{{ transaction.protocol }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Payout Method:</span>
+                <span>{{ transaction.payout_type }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Wallet Address:</span>
+                <span>{{ transaction.wallet }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>TX Hash:</span>
+                <span class="tx-hash">{{ transaction.tx_hash or 'N/A' }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Confirmations:</span>
+                <span>{{ transaction.confirmations or 0 }}</span>
+            </div>
+            <div class="receipt-row total">
+                <span>Amount:</span>
+                <span>{{ transaction.currency }} {{ transaction.amount }}</span>
+            </div>
+            <div class="receipt-row">
+                <span>Status:</span>
+                <span style="color: #28a745;">{{ transaction.status }}</span>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button onclick="printReceipt()" class="print-btn">Print Receipt</button>
+            <a href="{{ url_for('protocol') }}" class="button">New Transaction</a>
+            <a href="{{ url_for('transaction_history') }}" class="button secondary">Back to History</a>
+            <a href="{{ url_for('protocol') }}" class="button secondary">Home</a>
+            <a href="{{ url_for('logout') }}" class="button secondary">Logout</a>
+        </div>
+    </div>
+
+    <script>
+        function printReceipt() {
+            var printWindow = window.open('', '_blank');
+            var receiptContent = document.getElementById('receipt').innerHTML;
+            printWindow.document.write('<html><head><title>Receipt</title>');
+            printWindow.document.write('<style>body{font-family:Arial,sans-serif;padding:20px;}.receipt-header{text-align:center;margin-bottom:20px;}.receipt-title{font-size:24px;font-weight:bold;margin-bottom:10px;}.receipt-row{display:flex;justify-content:space-between;margin-bottom:8px;padding:5px 0;}.receipt-row.total{border-top:1px solid #333;font-weight:bold;margin-top:15px;}</style>');
+            printWindow.document.write('</head><body>');
+            printWindow.document.write('<div class="receipt">' + receiptContent + '</div>');
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+            printWindow.print();
+        }
+    </script>
+</body>
+</html>

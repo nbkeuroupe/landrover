@@ -1,0 +1,237 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=3.0">
+    <title>Enter Amount</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+            min-height: 100vh;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        .container { 
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .form-group { 
+            flex: 1;
+            margin-bottom: 25px;
+        }
+        
+        .form-group.currency {
+            flex: 0 0 120px;
+        }
+        
+        label { 
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        input[type="number"], select { 
+            width: 100%;
+            padding: 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 18px;
+            transition: border-color 0.3s ease;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        input[type="number"] {
+            text-align: right;
+            font-weight: 500;
+        }
+        
+        select {
+            background-color: white;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 12px center;
+            background-repeat: no-repeat;
+            background-size: 16px;
+            padding-right: 40px;
+        }
+        
+        input[type="number"]:focus, select:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+        }
+        
+        button { 
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            padding: 18px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            min-height: 56px;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .amount-presets {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+        
+        .preset-btn {
+            background: #f8f9fa;
+            border: 2px solid #e1e5e9;
+            color: #495057;
+            padding: 12px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-height: 48px;
+        }
+        
+        .preset-btn:hover, .preset-btn:active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+            
+            .container {
+                padding: 25px 20px;
+                border-radius: 12px;
+            }
+            
+            h2 {
+                font-size: 22px;
+                margin-bottom: 25px;
+            }
+            
+            .form-row {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .form-group.currency {
+                flex: 1;
+            }
+            
+            input[type="number"], select {
+                padding: 18px 16px;
+                font-size: 18px;
+            }
+            
+            select {
+                padding-right: 40px;
+            }
+            
+            button {
+                padding: 20px;
+                min-height: 60px;
+            }
+            
+            .amount-presets {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+            
+            .preset-btn {
+                padding: 16px 12px;
+                min-height: 52px;
+                font-size: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .amount-presets {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Enter Transaction Amount</h2>
+        
+        <div class="amount-presets">
+            <button type="button" class="preset-btn" onclick="setAmount(100)">$100</button>
+            <button type="button" class="preset-btn" onclick="setAmount(500)">$500</button>
+            <button type="button" class="preset-btn" onclick="setAmount(1000)">$1,000</button>
+            <button type="button" class="preset-btn" onclick="setAmount(5000)">$5,000</button>
+            <button type="button" class="preset-btn" onclick="setAmount(10000)">$10,000</button>
+            <button type="button" class="preset-btn" onclick="setAmount(50000)">$50,000</button>
+        </div>
+        
+        <form method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Amount:</label>
+                    <input type="number" name="amount" id="amount" min="1" max="5000000" step="0.01" required>
+                </div>
+                <div class="form-group currency">
+                    <label>Currency:</label>
+                    <select name="currency" required>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit">Continue</button>
+        </form>
+    </div>
+    
+    <script>
+        function setAmount(value) {
+            document.getElementById('amount').value = value;
+        }
+    </script>
+</body>
+</html>

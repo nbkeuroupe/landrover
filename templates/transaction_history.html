@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Transaction History - BlackRock Terminal</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f0f0f0; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .actions { display: flex; gap: 10px; }
+        button, a.button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; }
+        button.secondary { background-color: #6c757d; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; font-weight: bold; }
+        .status-success { color: #28a745; font-weight: bold; }
+        .actions-cell { display: flex; gap: 5px; }
+        .action-btn { padding: 5px 10px; font-size: 12px; }
+        .no-transactions { text-align: center; color: #666; margin: 50px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Transaction History</h2>
+            <div class="actions">
+                <a href="{{ url_for('protocol') }}" class="button">New Transaction</a>
+                <button onclick="downloadBackup()" class="button" style="background-color: #28a745;">Backup</button>
+                <button onclick="window.location.href='{{ url_for('protocol') }}'" class="button secondary">Home</button>
+                <button onclick="window.location.href='{{ url_for('logout') }}'" class="button secondary">Logout</button>
+            </div>
+        </div>
+
+        {% if transactions %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Transaction ID</th>
+                    <th>Date/Time</th>
+                    <th>Amount</th>
+                    <th>Card (Last 4)</th>
+                    <th>Payout Type</th>
+                    <th>Status</th>
+                    <th>Blockchain Hash</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for txn in transactions %}
+                <tr>
+                    <td>{{ txn.txn_id }}</td>
+                    <td>{{ txn.timestamp }}</td>
+                    <td>{{ txn.currency or 'USD' }} {{ txn.amount }}</td>
+                    <td>****{{ txn.pan }}</td>
+                    <td>{{ txn.payout_type }}</td>
+                    <td>
+                        {% if txn.status == 'CONFIRMED' %}
+                        <span style="color: #28a745;">{{ txn.status }} ({{ txn.confirmations or 0 }})</span>
+                        {% elif txn.status == 'PENDING' %}
+                        <span style="color: #ffc107;">{{ txn.status }} ({{ txn.confirmations or 0 }})</span>
+                        {% elif txn.status == 'BROADCASTING' %}
+                        <span style="color: #ff9800;">{{ txn.status }}</span>
+                        {% else %}
+                        <span style="color: #dc3545;">{{ txn.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ txn.blockchain_hash if txn.blockchain_hash else 'N/A' }}</td>
+                    <td class="actions-cell">
+                        <a href="{{ url_for('receipt', txn_id=txn.txn_id) }}" class="button action-btn">Receipt</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="no-transactions">
+            <h3>No transactions found</h3>
+            <p>Start by creating your first transaction.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function downloadBackup() {
+            const data = {{ transactions | tojson }};
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'transaction_backup_' + new Date().toISOString().split('T')[0] + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

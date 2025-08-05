@@ -1,0 +1,36 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Transaction Rejected</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 50px; background-color: #f0f0f0; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 30px; border-radius: 10px; }
+        .error { color: red; text-align: center; margin-bottom: 20px; }
+        .details { background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+        .detail-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        button { background-color: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        .retry { display: block; width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error">
+            <h2>✗ Transaction Rejected</h2>
+        </div>
+        <div class="details">
+            <div class="detail-row">
+                <strong>Error Code:</strong>
+                <span>{{ code }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Reason:</strong>
+                <span>{{ reason }}</span>
+            </div>
+        </div>
+        <a href="{{ url_for('protocol') }}">
+            <button class="retry">Try Again</button>
+        </a>
+    </div>
+</body>
+</html>

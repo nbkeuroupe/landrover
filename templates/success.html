@@ -1,0 +1,265 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=3.0">
+    <title>Transaction Successful</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        .container { 
+            width: 100%;
+            max-width: 500px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .success-header {
+            background: #28a745;
+            color: white;
+            text-align: center;
+            padding: 30px 20px;
+        }
+        
+        .success-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        .success-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .details { 
+            padding: 30px;
+        }
+        
+        .detail-row { 
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f3f4;
+            min-height: 44px;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-row strong {
+            color: #495057;
+            font-weight: 500;
+            flex: 0 0 40%;
+        }
+        
+        .detail-row span {
+            flex: 1;
+            text-align: right;
+            word-break: break-all;
+            color: #212529;
+            font-weight: 600;
+        }
+        
+        .actions { 
+            padding: 20px 30px 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .actions button { 
+            background-color: #007bff;
+            color: white;
+            padding: 16px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            min-height: 52px;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        }
+        
+        .actions button:active {
+            transform: scale(0.98);
+        }
+        
+        .actions button.secondary { 
+            background-color: #6c757d;
+        }
+        
+        .actions .print-btn { 
+            background-color: #28a745;
+        }
+        
+        .actions button:nth-child(3) {
+            background-color: #6f42c1;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+                align-items: flex-start;
+                padding-top: 40px;
+            }
+            
+            .container {
+                border-radius: 12px;
+            }
+            
+            .success-header {
+                padding: 25px 20px;
+            }
+            
+            .success-icon {
+                font-size: 40px;
+            }
+            
+            .success-title {
+                font-size: 22px;
+            }
+            
+            .details {
+                padding: 25px 20px;
+            }
+            
+            .detail-row {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 15px 0;
+            }
+            
+            .detail-row strong {
+                flex: none;
+                margin-bottom: 4px;
+                font-size: 14px;
+            }
+            
+            .detail-row span {
+                text-align: left;
+                font-size: 16px;
+            }
+            
+            .actions {
+                padding: 15px 20px 25px;
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            
+            .actions button {
+                padding: 18px 20px;
+                min-height: 56px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-header">
+            <div class="success-icon">✓</div>
+            <h2 class="success-title">Transaction Successful</h2>
+        </div>
+        
+        <div class="details">
+            <div class="detail-row">
+                <strong>Transaction ID:</strong>
+                <span>{{ txn_id }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Card (Last 4):</strong>
+                <span>****{{ pan }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Amount:</strong>
+                <span>{{ session.currency or 'USD' }} {{ amount }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Timestamp:</strong>
+                <span>{{ timestamp }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Payout Type:</strong>
+                <span>{{ payout_type }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Wallet:</strong>
+                <span>{{ wallet }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Transaction Hash:</strong>
+                <span style="font-family: monospace; font-size: 12px; word-break: break-all;">{{ tx_hash }}</span>
+            </div>
+            <div class="detail-row">
+                <strong>Blockchain Status:</strong>
+                <span id="blockchain-status" style="color: #ff9800;">BROADCASTING</span>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <button onclick="window.location.href='{{ url_for('receipt', txn_id=txn_id) }}'" class="print-btn">Print Receipt</button>
+            <button onclick="window.location.href='{{ url_for('protocol') }}'">New Transaction</button>
+            <button onclick="window.location.href='{{ url_for('transaction_history') }}'">Transaction History</button>
+            <button onclick="window.location.href='{{ url_for('protocol') }}'" class="secondary">Home</button>
+            <button onclick="window.location.href='{{ url_for('logout') }}'" class="secondary">Logout</button>
+        </div>
+    </div>
+
+    <script>
+        // Check transaction status periodically
+        let statusChecks = 0;
+        const maxChecks = 20;
+        
+        function checkTransactionStatus() {
+            if (statusChecks >= maxChecks) return;
+            
+            fetch('/check-status/{{ txn_id }}')
+                .then(response => response.json())
+                .then(data => {
+                    const statusElement = document.getElementById('blockchain-status');
+                    if (data.status === 'CONFIRMED') {
+                        statusElement.textContent = `CONFIRMED (${data.confirmations} confirmations)`;
+                        statusElement.style.color = '#28a745';
+                    } else if (data.status === 'PENDING') {
+                        statusElement.textContent = `PENDING (${data.confirmations} confirmations)`;
+                        statusElement.style.color = '#ffc107';
+                    } else {
+                        statusElement.textContent = data.status;
+                        statusElement.style.color = '#ff9800';
+                    }
+                    
+                    if (data.status !== 'CONFIRMED') {
+                        statusChecks++;
+                        setTimeout(checkTransactionStatus, 5000);
+                    }
+                })
+                .catch(error => console.log('Status check failed:', error));
+        }
+        
+        // Start checking status after 5 seconds
+        setTimeout(checkTransactionStatus, 5000);
+    </script>
+</body>
+</html>
