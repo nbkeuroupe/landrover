@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+from flask import Flask, render_template, request, redirect, session, url_for, flash, jsonify
 import random, logging, os, json, hashlib, re, socket, threading, time, requests
 from datetime import datetime
 from functools import wraps
@@ -156,7 +156,7 @@ PRODUCTION_TRC20_WALLET = os.environ.get('PRODUCTION_TRC20_WALLET')
 ERC20_PRIVATE_KEY = os.environ.get('ERC20_PRIVATE_KEY')
 TRC20_PRIVATE_KEY = os.environ.get('TRC20_PRIVATE_KEY')
 
-# Dummy card database
+# Dummy card database for gateway simulation
 DUMMY_CARDS = {
     "4114755393849011": {"expiry": "0926", "cvv": "363", "auth": "1942", "type": "POS-101.1"},
     "4000123412341234": {"expiry": "1126", "cvv": "123", "auth": "4021", "type": "POS-101.1"},
@@ -325,61 +325,64 @@ def iso8583_server_thread(host='127.0.0.1', port=8583):
                 s.bind((host, port))
                 s.listen()
                 logging.info(f"ISO8583 Test Server running on {host}:{port}")
+                
+                while True:
+                    conn, addr = s.accept()
+                    with conn:
+                        logging.info(f"ISO8583 Client connected: {addr}")
+                        while True:
+                            data = conn.recv(2048)
+                            if not data:
+                                break
+                            logging.info(f"Received ISO8583 data: {data}")
+                            
+                            conn.sendall(b"ISO8583 ACK:123456")
+                            
+                            try:
+                                decoded = data.decode(errors='ignore')
+                                if "PAYOUT" in decoded:
+                                    import re
+                                    payout_type = "USDT-ERC20" if "erc" in decoded.lower() else "USDT-TRC20"
+                                    to_addr_match = re.search(r"ADDR:(\S+)", decoded)
+                                    amt_match = re.search(r"AMT:(\S+)", decoded)
+                                    contract_match = re.search(r"CONTRACT:(\S+)", decoded)
+
+                                    if to_addr_match and amt_match and contract_match:
+                                        to_address = to_addr_match.group(1)
+                                        amount = amt_match.group(1)
+                                        contract = contract_match.group(1)
+                                        if payout_type == "USDT-ERC20" and os.getenv("ERC20_PRIVATE_KEY"):
+                                            txid = send_erc20_payout(
+                                                os.getenv("ERC20_PRIVATE_KEY"),
+                                                to_address,
+                                                amount,
+                                                contract,
+                                                os.getenv("ETHEREUM_RPC")
+                                            )
+                                            logging.info(f"ERC20 payout TXID: {txid}")
+                                        elif payout_type == "USDT-TRC20" and os.getenv("TRC20_PRIVATE_KEY"):
+                                            txid = send_trc20_payout(
+                                                os.getenv("TRC20_PRIVATE_KEY"),
+                                                to_address,
+                                                amount,
+                                                contract,
+                                                network=os.getenv("TRON_NETWORK", "mainnet")
+                                            )
+                                            logging.info(f"TRC20 payout TXID: {txid}")
+                                        else:
+                                            logging.error("Failed to execute real payout from ISO8583 message. Missing keys.")
+                            except Exception as e:
+                                logging.error(f"Error processing payout from ISO8583 message: {e}")
         except OSError as e:
             if e.errno == 98:  # Address already in use
                 logging.warning(f"ISO8583 port {port} already in use, skipping server start")
-                return
-            raise
-        
-        while True:
-            conn, addr = s.accept()
-            with conn:
-                logging.info(f"ISO8583 Client connected: {addr}")
-                while True:
-                    data = conn.recv(2048)
-                    if not data:
-                        break
-                    logging.info(f"Received ISO8583 data: {data}")
-                    
-                    conn.sendall(b"ISO8583 ACK:123456")
-                    
-                    try:
-                        decoded = data.decode(errors='ignore')
-                        if "PAYOUT" in decoded:
-                            import re
-                            payout_type = "USDT-ERC20" if "erc" in decoded.lower() else "USDT-TRC20"
-                            to_addr_match = re.search(r"ADDR:(\S+)", decoded)
-                            amt_match = re.search(r"AMT:(\S+)", decoded)
-                            contract_match = re.search(r"CONTRACT:(\S+)", decoded)
-
-                            if to_addr_match and amt_match and contract_match:
-                                to_address = to_addr_match.group(1)
-                                amount = amt_match.group(1)
-                                contract = contract_match.group(1)
-                                if payout_type == "USDT-ERC20" and os.getenv("ERC20_PRIVATE_KEY"):
-                                    txid = send_erc20_payout(
-                                        os.getenv("ERC20_PRIVATE_KEY"),
-                                        to_address,
-                                        amount,
-                                        contract,
-                                        os.getenv("ETHEREUM_RPC")
-                                    )
-                                    logging.info(f"ERC20 payout TXID: {txid}")
-                                elif payout_type == "USDT-TRC20" and os.getenv("TRC20_PRIVATE_KEY"):
-                                    txid = send_trc20_payout(
-                                        os.getenv("TRC20_PRIVATE_KEY"),
-                                        to_address,
-                                        amount,
-                                        contract,
-                                        network=os.getenv("TRON_NETWORK", "mainnet")
-                                    )
-                                    logging.info(f"TRC20 payout TXID: {txid}")
-                                else:
-                                    logging.error("Failed to execute real payout from ISO8583 message. Missing keys.")
-                    except Exception as e:
-                        logging.error(f"Error processing payout from ISO8583 message: {e}")
-
-    threading.Thread(target=server, daemon=True).start()
+            else:
+                logging.error(f"ISO8583 server error: {e}")
+    
+    # Only start the thread in the main Flask process, not the reloader
+    # This prevents the "Bad file descriptor" error
+    if __name__ == '__main__' and os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        threading.Thread(target=server, daemon=True).start()
 
 def track_confirmation(txn_id, tx_hash, payout_type):
     """Track real blockchain confirmation status"""
@@ -444,7 +447,8 @@ def env_status():
     }
 
 # Start ISO8583 Server Thread
-iso8583_server_thread()
+# The call to the function has been moved to the main execution block below
+# to ensure it only runs once and avoids the Bad file descriptor error.
 
 # --- Flask Routes ---
 
@@ -573,6 +577,31 @@ def payout():
                           erc20_wallet=CONFIG['erc20_wallet'],
                           trc20_wallet=CONFIG['trc20_wallet'])
 
+# New gateway route for card debit simulation
+@app.route('/gateway/debit_card', methods=['POST'])
+def debit_card_gateway():
+    data = request.json
+    pan = data.get('pan')
+    expiry = data.get('expiry')
+    cvv = data.get('cvv')
+
+    # Simulate a check against the dummy card database
+    card_info = DUMMY_CARDS.get(pan)
+    if card_info and card_info['expiry'] == expiry and card_info['cvv'] == cvv:
+        # Simulate a successful debit
+        return jsonify({
+            "status": "SUCCESS",
+            "message": "Funds debited successfully.",
+            "auth_code": card_info['auth']
+        })
+    else:
+        # Simulate a failed debit
+        return jsonify({
+            "status": "FAILURE",
+            "message": "Invalid card details or insufficient funds.",
+            "auth_code": None
+        })
+
 @app.route('/card', methods=['GET', 'POST'])
 @login_required
 def card():
@@ -583,24 +612,42 @@ def card():
         session['pan'] = pan
         session['expiry'] = expiry
         session['cvv'] = cvv
-        return redirect(url_for('auth'))
+        
+        # Call the new simulated gateway to debit the card
+        gateway_response = requests.post(url_for('debit_card_gateway', _external=True), json={
+            'pan': pan,
+            'expiry': expiry,
+            'cvv': cvv
+        })
+        
+        response_data = gateway_response.json()
+        
+        if response_data['status'] == 'SUCCESS':
+            session['auth_code'] = response_data['auth_code']
+            return redirect(url_for('auth_confirmation'))
+        else:
+            flash(response_data['message'])
+            return redirect(url_for('rejected', code="05", reason="Do Not Honor"))
+            
     return render_template('card.html')
 
-@app.route('/auth', methods=['GET', 'POST'])
+@app.route('/auth_confirmation')
 @login_required
-def auth():
-    if request.method == 'POST':
-        code = request.form.get('auth_code')
-        expected_length = session.get('code_length', 4)
-        if not code or len(code) != expected_length:
-            flash(f"Authorization code must be {expected_length} digits.")
-            return redirect(url_for('auth'))
-        session['auth_code'] = code
-        # Simulate transaction ID and timestamp
-        session['txn_id'] = f"TXN{random.randint(100000, 999999)}"
-        session['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        return redirect(url_for('processing'))
-    return render_template('auth.html', code_length=session.get('code_length', 4))
+def auth_confirmation():
+    # This route now serves as a confirmation step after the gateway has successfully debited funds
+    # We use the authorization code returned by the gateway
+    expected_length = session.get('code_length', 4)
+    code = session.get('auth_code')
+    
+    if not code or len(code) != expected_length:
+        flash(f"Authorization code from gateway is not valid length: {expected_length}.")
+        return redirect(url_for('rejected', code="82", reason="Invalid Auth Code"))
+    
+    # Simulate transaction ID and timestamp
+    session['txn_id'] = f"TXN{random.randint(100000, 999999)}"
+    session['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    return redirect(url_for('processing'))
 
 @app.route('/success')
 @login_required
@@ -671,6 +718,8 @@ except ImportError:
 
 # --- Main ---
 if __name__ == '__main__':
+    # Start ISO8583 Server Thread only once when running the main script
+    iso8583_server_thread()
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
     app.run(host='0.0.0.0', port=port, debug=debug)
