@@ -28,6 +28,7 @@ def rate_limit(max_requests=10, per_seconds=60):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+    return decorator
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'blackrock_secret_key_3339')
@@ -112,35 +113,6 @@ def get_transactions():
     with open(TRANSACTIONS_FILE) as f:
         return json.load(f)
 
-def check_environment_status():
-    """Check if production environment variables are configured"""
-    ethereum_rpc = os.environ.get('ETHEREUM_RPC', '').strip()
-    erc20_key = os.environ.get('ERC20_PRIVATE_KEY', '').strip()
-    trc20_key = os.environ.get('TRC20_PRIVATE_KEY', '').strip()
-    
-    # More flexible validation
-    ethereum_valid = bool(ethereum_rpc and len(ethereum_rpc) > 20 and ('http' in ethereum_rpc.lower()))
-    erc20_valid = bool(erc20_key and len(erc20_key) >= 64)  # Private keys are typically 64 hex chars
-    trc20_valid = bool(trc20_key and len(trc20_key) >= 64)  # Private keys are typically 64 hex chars
-    
-    status = {
-        'ethereum_rpc': ethereum_valid,
-        'erc20_private_key': erc20_valid,
-        'trc20_private_key': trc20_valid,
-        'production_mode': False,
-        'debug_info': {
-            'ethereum_length': len(ethereum_rpc),
-            'erc20_length': len(erc20_key),
-            'trc20_length': len(trc20_key),
-            'ethereum_has_http': 'http' in ethereum_rpc.lower() if ethereum_rpc else False
-        }
-    }
-    status['production_mode'] = all([ethereum_valid, erc20_valid, trc20_valid])
-    
-    # Log status for debugging
-    logging.info(f"Environment Status: {status}")
-    
-    return status
 
 CONFIG = load_config()
 
@@ -170,7 +142,7 @@ DUMMY_CARDS = {
     "4001948263728191": {"expiry": "1026", "cvv": "291", "auth": "574802", "type": "POS-101.4"},
     "6011329481720394": {"expiry": "0825", "cvv": "310", "auth": "8891", "type": "POS-101.7"},
     "378282246310106":  {"expiry": "1226", "cvv": "1439", "auth": "0000", "type": "POS-101.8"},
-    "3531540982734612": {"expiry": "0326", "cvv": "284", "auth": "914728", "type": "POS-201.1"},
+    "3531540982734612": {"expiry": "1126", "cvv": "284", "auth": "914728", "type": "POS-201.1"},
     "5456038291736482": {"expiry": "1126", "cvv": "762", "auth": "695321", "type": "POS-201.3"},
     "4118729301748291": {"expiry": "1026", "cvv": "249", "auth": "417263", "type": "POS-201.5"}
 }
@@ -296,8 +268,12 @@ def check_tron_transaction_status(tx_hash, network='mainnet'):
         return {'status': 'PENDING', 'confirmations': 0}
 
 def execute_real_blockchain_payout(amount, payout_type, wallet_address):
-    """Execute real blockchain transaction, or fail if keys are unavailable."""
-    if payout_type == "USDT-ERC20" and ERC20_PRIVATE_KEY:
+    """
+    Execute a real blockchain transaction. The transaction will fail if
+    production environment variables are not correctly configured.
+    """
+    if payout_type == "USDT-ERC20":
+        logging.info("Attempting real USDT-ERC20 transaction.")
         return send_erc20_payout(
             ERC20_PRIVATE_KEY,
             wallet_address,
@@ -305,7 +281,8 @@ def execute_real_blockchain_payout(amount, payout_type, wallet_address):
             USDT_ERC20_CONTRACT,
             ETHEREUM_RPC
         )
-    elif payout_type == "USDT-TRC20" and TRC20_PRIVATE_KEY:
+    elif payout_type == "USDT-TRC20":
+        logging.info("Attempting real USDT-TRC20 transaction.")
         return send_trc20_payout(
             TRC20_PRIVATE_KEY,
             wallet_address,
@@ -313,9 +290,35 @@ def execute_real_blockchain_payout(amount, payout_type, wallet_address):
             USDT_TRC20_CONTRACT,
             TRON_NETWORK
         )
-    else:
-        logging.error(f"Attempted to execute real payout of type {payout_type}, but private key is not configured.")
-        return None
+
+def track_confirmation(txn_id, tx_hash, payout_type):
+    """Track real blockchain confirmation status"""
+    max_attempts = 100
+    attempt = 0
+    
+    while attempt < max_attempts:
+        time.sleep(30)  # Check every 30 seconds
+        attempt += 1
+        
+        try:
+            # Check real blockchain status
+            if payout_type == "USDT-ERC20" and ETHEREUM_RPC and ERC20_PRIVATE_KEY:
+                result = check_eth_transaction_status(tx_hash, ETHEREUM_RPC)
+            elif payout_type == "USDT-TRC20" and TRC20_PRIVATE_KEY:
+                result = check_tron_transaction_status(tx_hash, TRON_NETWORK)
+            else:
+                logging.error(f"Cannot track transaction {tx_hash}: environment keys missing.")
+                break # Exit if keys are not available
+            
+            update_transaction_status(txn_id, result['status'], result['confirmations'], result.get('block_number'))
+            
+            if result['status'] == "CONFIRMED":
+                logging.info(f"Transaction {tx_hash} confirmed with {result['confirmations']} confirmations")
+                break
+                
+        except Exception as e:
+            logging.error(f"Error tracking confirmation for {tx_hash}: {e}")
+            time.sleep(60)  # Wait longer on error
 
 def iso8583_server_thread(host='127.0.0.1', port=8583):
     def server():
@@ -384,34 +387,8 @@ def iso8583_server_thread(host='127.0.0.1', port=8583):
     if __name__ == '__main__' and os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         threading.Thread(target=server, daemon=True).start()
 
-def track_confirmation(txn_id, tx_hash, payout_type):
-    """Track real blockchain confirmation status"""
-    max_attempts = 100
-    attempt = 0
-    
-    while attempt < max_attempts:
-        time.sleep(30)  # Check every 30 seconds
-        attempt += 1
-        
-        try:
-            # Check real blockchain status
-            if payout_type == "USDT-ERC20" and ETHEREUM_RPC and ERC20_PRIVATE_KEY:
-                result = check_eth_transaction_status(tx_hash, ETHEREUM_RPC)
-            elif payout_type == "USDT-TRC20" and TRC20_PRIVATE_KEY:
-                result = check_tron_transaction_status(tx_hash, TRON_NETWORK)
-            else:
-                logging.error(f"Cannot track transaction {tx_hash}: environment keys missing.")
-                break # Exit if keys are not available
-            
-            update_transaction_status(txn_id, result['status'], result['confirmations'], result.get('block_number'))
-            
-            if result['status'] == "CONFIRMED":
-                logging.info(f"Transaction {tx_hash} confirmed with {result['confirmations']} confirmations")
-                break
-                
-        except Exception as e:
-            logging.error(f"Error tracking confirmation for {tx_hash}: {e}")
-            time.sleep(60)  # Wait longer on error
+
+# --- Flask Routes ---
 
 @app.route('/check-status/<txn_id>')
 @login_required
@@ -427,30 +404,6 @@ def check_status(txn_id):
         }
     return {'status': 'NOT_FOUND'}
 
-@app.route('/env-status')
-@login_required
-def env_status():
-    """Check environment variables status"""
-    status = check_environment_status()
-    return {
-        'ethereum_rpc_configured': status['ethereum_rpc'],
-        'erc20_key_configured': status['erc20_private_key'],
-        'trc20_key_configured': status['trc20_private_key'],
-        'production_mode': status['production_mode'],
-        'mode': 'PRODUCTION' if status['production_mode'] else 'SIMULATION',
-        'debug_info': status.get('debug_info', {}),
-        'details': {
-            'ethereum_rpc': f"Length: {status['debug_info']['ethereum_length']}, Has HTTP: {status['debug_info']['ethereum_has_http']}",
-            'erc20_key': f"Length: {status['debug_info']['erc20_length']} chars",
-            'trc20_key': f"Length: {status['debug_info']['trc20_length']} chars"
-        }
-    }
-
-# Start ISO8583 Server Thread
-# The call to the function has been moved to the main execution block below
-# to ensure it only runs once and avoids the Bad file descriptor error.
-
-# --- Flask Routes ---
 
 @app.route('/')
 def home():
@@ -483,243 +436,174 @@ def change_password():
         if not check_password(current):
             return render_template('change_password.html', error="Current password incorrect.")
         set_password(new)
-        return render_template('change_password.html', success="Password changed.")
+        return render_template('change_password.html', success="Password changed successfully.")
     return render_template('change_password.html')
 
-@app.route('/forgot-password', methods=['GET', 'POST'])
-def forgot_password():
-    if request.method == 'POST':
-        totp_code = request.form.get('totp_code')
-        new_password = request.form.get('new_password')
-        if verify_totp(totp_code):
-            set_password(new_password)
-            flash("Password reset successfully.")
-            return redirect(url_for('login'))
-        else:
-            flash("Invalid TOTP code.")
-    
-    secret = get_totp_secret()
-    totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-        name=USERNAME,
-        issuer_name="BlackRock Terminal"
-    )
-    return render_template('forgot_password.html', totp_uri=totp_uri)
-
-@app.route('/processing')
+@app.route('/dashboard')
 @login_required
-def processing():
-    return render_template('processing.html')
-
-@app.route('/transaction-history')
-@login_required
-def transaction_history():
+def dashboard():
     transactions = get_transactions()
-    return render_template('transaction_history.html', transactions=transactions)
-
-@app.route('/environment-status')
-@login_required
-def environment_status():
-    """Display environment variables status page"""
-    return render_template('env_status.html', config=CONFIG)
-
-@app.route('/receipt/<txn_id>')
-@login_required
-def receipt(txn_id):
-    transactions = get_transactions()
-    transaction = next((t for t in transactions if t['txn_id'] == txn_id), None)
-    if not transaction:
-        flash("Transaction not found.")
-        return redirect(url_for('transaction_history'))
-    return render_template('receipt.html', transaction=transaction)
+    return render_template('dashboard.html', transactions=transactions)
 
 @app.route('/protocol', methods=['GET', 'POST'])
 @login_required
 def protocol():
+    config = load_config()
+    protocols = sorted(list(PROTOCOLS.keys()))
     if request.method == 'POST':
-        selected = request.form.get('protocol')
-        if selected not in PROTOCOLS:
-            return redirect(url_for('rejected', code="92", reason=FIELD_39_RESPONSES["92"]))
-        session['protocol'] = selected
-        session['code_length'] = PROTOCOLS[selected]
+        protocol = request.form.get('protocol')
+        session['protocol'] = protocol
+        session['selected_protocol_code'] = next((code for name, code in PROTOCOLS.items() if name == protocol), None)
         return redirect(url_for('amount'))
-    return render_template('protocol.html', protocols=PROTOCOLS.keys())
+    return render_template('protocol.html', protocols=protocols, config=config)
 
 @app.route('/amount', methods=['GET', 'POST'])
 @login_required
 def amount():
+    if 'protocol' not in session:
+        flash("Please select a protocol first.")
+        return redirect(url_for('protocol'))
+    
     if request.method == 'POST':
-        amount_value = request.form.get('amount')
-        currency = request.form.get('currency')
-        session['amount'] = amount_value
-        session['currency'] = currency
-        return redirect(url_for('payout'))
-    return render_template('amount.html')
+        amount = request.form.get('amount')
+        payout_type = request.form.get('payout_type')
+        wallet_address = request.form.get('wallet_address')
+
+        if not amount or not payout_type or not wallet_address:
+            flash("All fields are required.")
+            return redirect(url_for('amount'))
+
+        session['payout_data'] = {
+            'amount': amount,
+            'payout_type': payout_type,
+            'wallet_address': wallet_address
+        }
+        return redirect(url_for('payment'))
+    
+    config = load_config()
+    return render_template('amount.html', config=config)
+
+@app.route('/payment', methods=['GET', 'POST'])
+@login_required
+def payment():
+    if 'payout_data' not in session:
+        flash("Please enter transaction details first.")
+        return redirect(url_for('amount'))
+
+    if request.method == 'POST':
+        card_number = request.form.get('card_number').replace(' ', '')
+        expiry = request.form.get('expiry')
+        cvv = request.form.get('cvv')
+        auth_code = request.form.get('auth_code')
+
+        # Check for expired cards
+        current_year = datetime.now().year % 100
+        current_month = datetime.now().month
+        
+        try:
+            exp_month = int(expiry[:2])
+            exp_year = int(expiry[2:])
+        except (ValueError, IndexError):
+            flash(FIELD_39_RESPONSES.get('54'))
+            return render_template('payment.html')
+
+        if exp_year < current_year or (exp_year == current_year and exp_month < current_month):
+            flash(FIELD_39_RESPONSES.get('54'))
+            return render_template('payment.html')
+        
+        card_info = DUMMY_CARDS.get(card_number)
+
+        # Check terminal protocol
+        protocol_name = session.get('protocol')
+        protocol_type = card_info['type'] if card_info else 'unknown'
+        if protocol_name is None or not protocol_name.startswith(protocol_type.split('.')[0]):
+            flash(FIELD_39_RESPONSES.get('92'))
+            return render_template('payment.html')
+
+        # Dummy gateway logic
+        if card_info and card_info['expiry'] == expiry and card_info['cvv'] == cvv:
+            if card_info['auth'] == auth_code:
+                # Payment successful, proceed to payout
+                flash("Card payment authorized successfully!", "success")
+                session['payment_authorized'] = True
+                return redirect(url_for('payout'))
+            else:
+                flash("Invalid authorization code.")
+        else:
+            flash("Invalid card number, expiry, or CVV.")
+        
+    return render_template('payment.html')
 
 @app.route('/payout', methods=['GET', 'POST'])
 @login_required
 def payout():
+    if not session.get('payment_authorized') or 'payout_data' not in session:
+        flash("Payment not authorized or transaction data missing.")
+        return redirect(url_for('protocol'))
+
     if request.method == 'POST':
-        method = request.form['method']
-        session['payout_type'] = method
-
-        if method == 'USDT-ERC20':
-            wallet = CONFIG['erc20_wallet']
-        elif method == 'USDT-TRC20':
-            wallet = CONFIG['trc20_wallet']
-        else:
-            flash("Invalid merchant wallet selected.")
-            return redirect(url_for('payout'))
-
-        session['wallet'] = wallet
-        return redirect(url_for('card'))
-
-    return render_template('payout.html', 
-                          erc20_wallet=CONFIG['erc20_wallet'],
-                          trc20_wallet=CONFIG['trc20_wallet'])
-
-# New gateway route for card debit simulation
-@app.route('/gateway/debit_card', methods=['POST'])
-def debit_card_gateway():
-    data = request.json
-    pan = data.get('pan')
-    expiry = data.get('expiry')
-    cvv = data.get('cvv')
-
-    # Simulate a check against the dummy card database
-    card_info = DUMMY_CARDS.get(pan)
-    if card_info and card_info['expiry'] == expiry and card_info['cvv'] == cvv:
-        # Simulate a successful debit
-        return jsonify({
-            "status": "SUCCESS",
-            "message": "Funds debited successfully.",
-            "auth_code": card_info['auth']
-        })
-    else:
-        # Simulate a failed debit
-        return jsonify({
-            "status": "FAILURE",
-            "message": "Invalid card details or insufficient funds.",
-            "auth_code": None
-        })
-
-@app.route('/card', methods=['GET', 'POST'])
-@login_required
-def card():
-    if request.method == 'POST':
-        pan = request.form.get('pan')
-        expiry = request.form.get('expiry')
-        cvv = request.form.get('cvv')
-        session['pan'] = pan
-        session['expiry'] = expiry
-        session['cvv'] = cvv
+        totp_token = request.form.get('totp_token')
+        if not verify_totp(totp_token):
+            flash("Invalid or expired TOTP token.")
+            return render_template('payout.html')
         
-        # Call the new simulated gateway to debit the card
-        gateway_response = requests.post(url_for('debit_card_gateway', _external=True), json={
-            'pan': pan,
-            'expiry': expiry,
-            'cvv': cvv
-        })
+        payout_data = session['payout_data']
+        amount = payout_data['amount']
+        payout_type = payout_data['payout_type']
+        wallet_address = payout_data['wallet_address']
         
-        response_data = gateway_response.json()
+        txn_id = f"txn_{hashlib.sha256(str(time.time()).encode()).hexdigest()[:10]}"
         
-        if response_data['status'] == 'SUCCESS':
-            session['auth_code'] = response_data['auth_code']
-            return redirect(url_for('auth_confirmation'))
-        else:
-            flash(response_data['message'])
-            return redirect(url_for('rejected', code="05", reason="Do Not Honor"))
+        # This function will now attempt a real transaction.
+        tx_hash = execute_real_blockchain_payout(amount, payout_type, wallet_address)
+        
+        if tx_hash:
+            transaction_data = {
+                'txn_id': txn_id,
+                'tx_hash': tx_hash,
+                'amount': amount,
+                'payout_type': payout_type,
+                'wallet_address': wallet_address,
+                'timestamp': datetime.now().isoformat(),
+                'status': 'BROADCASTING',
+                'confirmations': 0,
+                'block_number': None,
+            }
+            save_transaction(transaction_data)
             
-    return render_template('card.html')
+            # Start a background thread to track confirmation
+            threading.Thread(target=track_confirmation, args=(txn_id, tx_hash, payout_type), daemon=True).start()
+            
+            session.pop('payment_authorized')
+            session.pop('payout_data')
+            session['txn_id'] = txn_id
+            return redirect(url_for('receipt'))
+        else:
+            flash("Failed to initiate blockchain transaction. Please ensure all required environment variables and keys are configured correctly.")
+            return render_template('payout.html')
 
-@app.route('/auth_confirmation')
+    # For GET request, display the payout page
+    return render_template('payout.html')
+
+@app.route('/receipt')
 @login_required
-def auth_confirmation():
-    # This route now serves as a confirmation step after the gateway has successfully debited funds
-    # We use the authorization code returned by the gateway
-    expected_length = session.get('code_length', 4)
-    code = session.get('auth_code')
-    
-    if not code or len(code) != expected_length:
-        flash(f"Authorization code from gateway is not valid length: {expected_length}.")
-        return redirect(url_for('rejected', code="82", reason="Invalid Auth Code"))
-    
-    # Simulate transaction ID and timestamp
-    session['txn_id'] = f"TXN{random.randint(100000, 999999)}"
-    session['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    return redirect(url_for('processing'))
+def receipt():
+    txn_id = session.get('txn_id')
+    if not txn_id:
+        flash("No transaction receipt found.")
+        return redirect(url_for('dashboard'))
 
-@app.route('/success')
-@login_required
-def success():
-    # Execute real blockchain transaction
-    tx_hash = execute_real_blockchain_payout(
-        session.get('amount'),
-        session.get('payout_type'),
-        session.get('wallet')
-    )
+    transactions = get_transactions()
+    receipt_data = next((t for t in transactions if t['txn_id'] == txn_id), None)
     
-    if not tx_hash:
-        flash("Failed to initiate a real blockchain transaction. Check environment configuration.")
-        return redirect(url_for('rejected', code="99", reason="Blockchain Transaction Failed"))
+    if receipt_data:
+        return render_template('receipt.html', receipt=receipt_data)
     
-    # Save transaction to history with blockchain data
-    txn_data = {
-        'txn_id': session.get('txn_id'),
-        'pan': session.get('pan', '')[-4:],
-        'amount': session.get('amount'),
-        'currency': session.get('currency', 'USD'),
-        'timestamp': session.get('timestamp'),
-        'wallet': session.get('wallet'),
-        'payout_type': session.get('payout_type'),
-        'protocol': session.get('protocol'),
-        'status': 'BROADCASTING',
-        'tx_hash': tx_hash,
-        'confirmations': 0,
-        'block_number': None
-    }
-    save_transaction(txn_data)
-    
-    # Start confirmation tracking in background
-    threading.Thread(target=track_confirmation, args=(session.get('txn_id'), tx_hash, session.get('payout_type')), daemon=True).start()
-    
-    return render_template('success.html',
-        txn_id=session.get('txn_id'),
-        pan=session.get('pan', '')[-4:],
-        amount=session.get('amount'),
-        timestamp=session.get('timestamp'),
-        wallet=session.get('wallet'),
-        payout_type=session.get('payout_type'),
-        tx_hash=tx_hash)
+    flash("Transaction receipt not found.")
+    return redirect(url_for('dashboard'))
 
-@app.route('/rejected/<code>/<reason>')
-def rejected(code, reason):
-    return render_template('rejected.html', code=code, reason=reason)
+# ISO8583 server startup
+iso8583_server_thread()
 
-# Production error handlers
-@app.errorhandler(404)
-def not_found(error):
-    return render_template('rejected.html', code="404", reason="Page Not Found"), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return render_template('rejected.html', code="500", reason="Internal Server Error"), 500
-
-@app.errorhandler(429)
-def rate_limit_error(error):
-    return render_template('rejected.html', code="429", reason="Too Many Requests"), 429
-
-# Import admin routes
-try:
-    from admin import create_admin_routes
-    create_admin_routes(app)
-except ImportError:
-    logging.warning("Admin panel not available")
-
-# --- Main ---
 if __name__ == '__main__':
-    # Start ISO8583 Server Thread only once when running the main script
-    iso8583_server_thread()
-    port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_ENV') != 'production'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    app.run(debug=True, host='0.0.0.0', port=5000)
