@@ -2,46 +2,184 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Crypto Transaction App</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=3.0">
+    <title>BlackRock Terminal - Login</title>
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        .container { 
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            padding: 40px 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h2 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .form-group { 
+            margin-bottom: 20px;
+        }
+        
+        label { 
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+        
+        input[type="text"], input[type="password"] { 
+            width: 100%;
+            padding: 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+        }
+        
+        button { 
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            padding: 16px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            min-height: 50px;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+        }
+        
+        button:hover {
+            background-color: #0056b3;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .flash { 
+            color: #dc3545;
+            margin-bottom: 20px;
+            text-align: center;
+            padding: 12px;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .forgot-password {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .forgot-password a {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 10px;
+            display: inline-block;
+            min-height: 44px;
+            line-height: 24px;
+        }
+        
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+            
+            .container {
+                padding: 30px 20px;
+                border-radius: 12px;
+            }
+            
+            h2 {
+                font-size: 22px;
+            }
+            
+            input[type="text"], input[type="password"] {
+                padding: 18px 16px;
+                font-size: 16px;
+            }
+            
+            button {
+                padding: 18px 20px;
+                min-height: 56px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                border-radius: 0;
+            }
         }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-sm">
-        <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">BlackRock Terminal Login</h2>
-        {% with messages = get_flashed_messages(with_categories=true) %}
+<body>
+    <div class="container">
+        <h2>BlackRock Terminal Login</h2>
+        {% with messages = get_flashed_messages() %}
             {% if messages %}
-                {% for category, message in messages %}
-                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-lg" role="alert">
-                        <p>{{ message }}</p>
-                    </div>
-                {% endfor %}
+                <div class="flash">{{ messages[0] }}</div>
             {% endif %}
         {% endwith %}
-        <form action="{{ url_for('login') }}" method="post">
-            <div class="mb-4">
-                <label for="username" class="block text-gray-700 font-semibold mb-2">Username</label>
-                <input type="text" id="username" name="username" placeholder="blackrock" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required autocomplete="username">
+        <form method="POST">
+            <div class="form-group">
+                <label>Username:</label>
+                <input type="text" name="username" required autocomplete="username">
             </div>
-            <div class="mb-6">
-                <label for="password" class="block text-gray-700 font-semibold mb-2">Password</label>
-                <input type="password" id="password" name="password" placeholder="••••••••" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required autocomplete="current-password">
+            <div class="form-group">
+                <label>Password:</label>
+                <input type="password" name="password" required autocomplete="current-password">
             </div>
-            <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300">
-                Login
-            </button>
+            <button type="submit">Login</button>
+            <div class="forgot-password">
+                <a href="{{ url_for('change_password') }}">Forgot Password?</a>
+            </div>
         </form>
-        <div class="mt-4 text-center">
-            <a href="{{ url_for('change_password') }}" class="text-blue-600 hover:text-blue-800 text-sm">Change Password?</a>
-        </div>
     </div>
 </body>
 </html>
