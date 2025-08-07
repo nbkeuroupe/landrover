@@ -1,10 +1,12 @@
-
-from flask import Flask, render_template, request, redirect, session, url_for, send_file, flash
-import random, logging, io, os, json, hashlib, re, socket, threading, time, requests
+from flask import Flask, render_template, request, redirect, session, url_for, flash
+import random, logging, os, json, hashlib, re, socket, threading, time, requests
 from datetime import datetime
 from functools import wraps
-import time
 from collections import defaultdict
+from web3 import Web3
+from tronpy import Tron
+from tronpy.keys import PrivateKey
+import pyotp
 
 # Rate limiting
 request_counts = defaultdict(list)
@@ -26,17 +28,6 @@ def rate_limit(max_requests=10, per_seconds=60):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
-from web3 import Web3
-from tronpy import Tron
-from tronpy.keys import PrivateKey
-import pyotp
-
-# Production imports
-try:
-    import qrcode
-    QR_AVAILABLE = True
-except ImportError:
-    QR_AVAILABLE = False
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'blackrock_secret_key_3339')
@@ -154,7 +145,7 @@ def check_environment_status():
 CONFIG = load_config()
 
 # Production blockchain configuration
-ETHEREUM_RPC = os.environ.get('ETHEREUM_RPC', 'https://mainnet.infura.io/v3/YOUR_PROJECT_ID')
+ETHEREUM_RPC = os.environ.get('ETHEREUM_RPC')
 TRON_NETWORK = os.environ.get('TRON_NETWORK', 'mainnet')
 USDT_ERC20_CONTRACT = os.environ.get('USDT_ERC20_CONTRACT', '0xdAC17F958D2ee523a2206206994597C13D831ec7')
 USDT_TRC20_CONTRACT = os.environ.get('USDT_TRC20_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')
@@ -305,7 +296,7 @@ def check_tron_transaction_status(tx_hash, network='mainnet'):
         return {'status': 'PENDING', 'confirmations': 0}
 
 def execute_real_blockchain_payout(amount, payout_type, wallet_address):
-    """Execute real blockchain transaction if keys are available"""
+    """Execute real blockchain transaction, or fail if keys are unavailable."""
     if payout_type == "USDT-ERC20" and ERC20_PRIVATE_KEY:
         return send_erc20_payout(
             ERC20_PRIVATE_KEY,
@@ -323,13 +314,9 @@ def execute_real_blockchain_payout(amount, payout_type, wallet_address):
             TRON_NETWORK
         )
     else:
-        # Fallback to simulation for demo
-        import hashlib
-        hash_input = f"{amount}-{payout_type}-{wallet_address}-{time.time()}"
-        tx_hash = hashlib.sha256(hash_input.encode()).hexdigest()
-        return f"0x{tx_hash}" if payout_type == "USDT-ERC20" else tx_hash[:64]
+        logging.error(f"Attempted to execute real payout of type {payout_type}, but private key is not configured.")
+        return None
 
-# --- ISO8583 TCP Server Thread ---
 def iso8583_server_thread(host='127.0.0.1', port=8583):
     def server():
         try:
@@ -343,53 +330,54 @@ def iso8583_server_thread(host='127.0.0.1', port=8583):
                 logging.warning(f"ISO8583 port {port} already in use, skipping server start")
                 return
             raise
-            while True:
-                conn, addr = s.accept()
-                with conn:
-                    logging.info(f"ISO8583 Client connected: {addr}")
-                    while True:
-                        data = conn.recv(2048)
-                        if not data:
-                            break
-                        logging.info(f"Received ISO8583 data: {data}")
+        
+        while True:
+            conn, addr = s.accept()
+            with conn:
+                logging.info(f"ISO8583 Client connected: {addr}")
+                while True:
+                    data = conn.recv(2048)
+                    if not data:
+                        break
+                    logging.info(f"Received ISO8583 data: {data}")
+                    
+                    conn.sendall(b"ISO8583 ACK:123456")
+                    
+                    try:
+                        decoded = data.decode(errors='ignore')
+                        if "PAYOUT" in decoded:
+                            import re
+                            payout_type = "USDT-ERC20" if "erc" in decoded.lower() else "USDT-TRC20"
+                            to_addr_match = re.search(r"ADDR:(\S+)", decoded)
+                            amt_match = re.search(r"AMT:(\S+)", decoded)
+                            contract_match = re.search(r"CONTRACT:(\S+)", decoded)
 
-                        # Reply with mock response to avoid client timeout
-                        conn.sendall(b"ISO8583 ACK:123456")
-
-                        # Trigger crypto payout based on ISO8583 content:
-                        try:
-                            decoded = data.decode(errors='ignore')
-                            if "PAYOUT" in decoded:
-                                import re
-                                payout_type = "ERC20" if "erc" in decoded.lower() else "TRC20"
-                                to_addr_match = re.search(r"ADDR:(\S+)", decoded)
-                                amt_match = re.search(r"AMT:(\S+)", decoded)
-                                contract_match = re.search(r"CONTRACT:(\S+)", decoded)
-
-                                if to_addr_match and amt_match and contract_match:
-                                    to_address = to_addr_match.group(1)
-                                    amount = amt_match.group(1)
-                                    contract = contract_match.group(1)
-                                    if payout_type == "ERC20":
-                                        txid = send_erc20_payout(
-                                            os.getenv("ERC20_PRIVATE_KEY"),
-                                            to_address,
-                                            amount,
-                                            contract,
-                                            os.getenv("INFURA_URL")
-                                        )
-                                        logging.info(f"ERC20 payout TXID: {txid}")
-                                    else:
-                                        txid = send_trc20_payout(
-                                            os.getenv("TRC20_PRIVATE_KEY"),
-                                            to_address,
-                                            amount,
-                                            contract,
-                                            network=os.getenv("TRON_NETWORK", "mainnet")
-                                        )
-                                        logging.info(f"TRC20 payout TXID: {txid}")
-                        except Exception as e:
-                            logging.error(f"Error processing payout from ISO8583 message: {e}")
+                            if to_addr_match and amt_match and contract_match:
+                                to_address = to_addr_match.group(1)
+                                amount = amt_match.group(1)
+                                contract = contract_match.group(1)
+                                if payout_type == "USDT-ERC20" and os.getenv("ERC20_PRIVATE_KEY"):
+                                    txid = send_erc20_payout(
+                                        os.getenv("ERC20_PRIVATE_KEY"),
+                                        to_address,
+                                        amount,
+                                        contract,
+                                        os.getenv("ETHEREUM_RPC")
+                                    )
+                                    logging.info(f"ERC20 payout TXID: {txid}")
+                                elif payout_type == "USDT-TRC20" and os.getenv("TRC20_PRIVATE_KEY"):
+                                    txid = send_trc20_payout(
+                                        os.getenv("TRC20_PRIVATE_KEY"),
+                                        to_address,
+                                        amount,
+                                        contract,
+                                        network=os.getenv("TRON_NETWORK", "mainnet")
+                                    )
+                                    logging.info(f"TRC20 payout TXID: {txid}")
+                                else:
+                                    logging.error("Failed to execute real payout from ISO8583 message. Missing keys.")
+                    except Exception as e:
+                        logging.error(f"Error processing payout from ISO8583 message: {e}")
 
     threading.Thread(target=server, daemon=True).start()
 
@@ -403,19 +391,14 @@ def track_confirmation(txn_id, tx_hash, payout_type):
         attempt += 1
         
         try:
-            # Check real blockchain status if RPC available
+            # Check real blockchain status
             if payout_type == "USDT-ERC20" and ETHEREUM_RPC and ERC20_PRIVATE_KEY:
                 result = check_eth_transaction_status(tx_hash, ETHEREUM_RPC)
             elif payout_type == "USDT-TRC20" and TRC20_PRIVATE_KEY:
                 result = check_tron_transaction_status(tx_hash, TRON_NETWORK)
             else:
-                # Fallback simulation for demo
-                if attempt <= 3:
-                    result = {"status": "BROADCASTING", "confirmations": 0}
-                elif attempt <= 8:
-                    result = {"status": "PENDING", "confirmations": attempt - 3}
-                else:
-                    result = {"status": "CONFIRMED", "confirmations": 12 if payout_type == "USDT-ERC20" else 19, "block_number": random.randint(18000000, 18100000)}
+                logging.error(f"Cannot track transaction {tx_hash}: environment keys missing.")
+                break # Exit if keys are not available
             
             update_transaction_status(txn_id, result['status'], result['confirmations'], result.get('block_number'))
             
@@ -575,7 +558,6 @@ def payout():
         method = request.form['method']
         session['payout_type'] = method
 
-        # Terminal provider selects merchant wallet for receiving payouts
         if method == 'USDT-ERC20':
             wallet = CONFIG['erc20_wallet']
         elif method == 'USDT-TRC20':
@@ -588,8 +570,8 @@ def payout():
         return redirect(url_for('card'))
 
     return render_template('payout.html', 
-                         erc20_wallet=CONFIG['erc20_wallet'],
-                         trc20_wallet=CONFIG['trc20_wallet'])
+                          erc20_wallet=CONFIG['erc20_wallet'],
+                          trc20_wallet=CONFIG['trc20_wallet'])
 
 @app.route('/card', methods=['GET', 'POST'])
 @login_required
@@ -629,6 +611,10 @@ def success():
         session.get('payout_type'),
         session.get('wallet')
     )
+    
+    if not tx_hash:
+        flash("Failed to initiate a real blockchain transaction. Check environment configuration.")
+        return redirect(url_for('rejected', code="99", reason="Blockchain Transaction Failed"))
     
     # Save transaction to history with blockchain data
     txn_data = {
